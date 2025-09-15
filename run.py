@@ -34,6 +34,9 @@ def run_with_dialout_permission(cmd_args):
         return result.returncode
     except subprocess.CalledProcessError as e:
         return e.returncode
+    except KeyboardInterrupt:
+        # 优雅处理Ctrl+C，不显示traceback
+        return 0
     except FileNotFoundError:
         print("错误：无法找到必要的命令")
         return 1

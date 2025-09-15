@@ -239,13 +239,14 @@ def relay_status(port: str, slave_id: int, relay: Optional[int], count: int):
 @handle_exceptions
 def relay_on(port: str, slave_id: int, relay: int):
     """打开继电器"""
-    with USBRelayController(port, slave_id) as controller:
-        success = controller.turn_on_relay(relay)
-        
-        if success:
-            console.print(f"[green]✓ 继电器 {relay} 已打开[/green]")
-        else:
-            console.print(f"[red]✗ 继电器 {relay} 打开失败[/red]")
+    from daemon import execute_relay_command_smart
+    
+    success = execute_relay_command_smart(port, slave_id, relay, "on")
+    
+    if success:
+        console.print(f"[green]✓ 继电器 {relay} 已打开[/green]")
+    else:
+        console.print(f"[red]✗ 继电器 {relay} 打开失败[/red]")
 
 
 @relay.command("off")
@@ -255,13 +256,14 @@ def relay_on(port: str, slave_id: int, relay: int):
 @handle_exceptions
 def relay_off(port: str, slave_id: int, relay: int):
     """关闭继电器"""
-    with USBRelayController(port, slave_id) as controller:
-        success = controller.turn_off_relay(relay)
-        
-        if success:
-            console.print(f"[green]✓ 继电器 {relay} 已关闭[/green]")
-        else:
-            console.print(f"[red]✗ 继电器 {relay} 关闭失败[/red]")
+    from daemon import execute_relay_command_smart
+    
+    success = execute_relay_command_smart(port, slave_id, relay, "off")
+    
+    if success:
+        console.print(f"[green]✓ 继电器 {relay} 已关闭[/green]")
+    else:
+        console.print(f"[red]✗ 继电器 {relay} 关闭失败[/red]")
 
 
 @relay.command("toggle")
@@ -271,16 +273,14 @@ def relay_off(port: str, slave_id: int, relay: int):
 @handle_exceptions
 def relay_toggle(port: str, slave_id: int, relay: int):
     """切换继电器状态"""
-    with USBRelayController(port, slave_id) as controller:
-        success = controller.toggle_relay(relay)
-        
-        if success:
-            # 读取新状态
-            state = controller.get_relay_state(relay)
-            status_text = "打开" if state.state else "关闭"
-            console.print(f"[green]✓ 继电器 {relay} 已{status_text}[/green]")
-        else:
-            console.print(f"[red]✗ 继电器 {relay} 切换失败[/red]")
+    from daemon import execute_relay_command_smart
+    
+    success = execute_relay_command_smart(port, slave_id, relay, "toggle")
+    
+    if success:
+        console.print(f"[green]✓ 继电器 {relay} 状态已切换[/green]")
+    else:
+        console.print(f"[red]✗ 继电器 {relay} 切换失败[/red]")
 
 
 @relay.command("all-on")
@@ -426,8 +426,8 @@ def input_monitor(port: str, slave_id: int, input: Optional[int], count: int, in
     daemon = USBRelayDaemon(port, slave_id, count)
     
     def signal_handler(sig, frame):
+        print()  # 换行清理当前行
         daemon.stop()
-        console.print()
         console.print("[green]✓ 监控守护进程已停止[/green]")
         sys.exit(0)
     
