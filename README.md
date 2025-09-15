@@ -1,10 +1,11 @@
 # USB继电器RTU控制软件
 
-基于Modbus RTU协议的跨平台USB继电器控制软件，支持Ubuntu和Windows操作系统。
+基于Modbus RTU协议的跨平台USB继电器控制软件，完全支持Ubuntu、Windows和macOS操作系统。
 
 ## 功能特性
 
-- 🔌 **真正跨平台支持**: 单一代码库支持Ubuntu、Windows和macOS
+- 🔌 **真正跨平台支持**: 单一代码库支持Ubuntu、Windows和macOS，无需额外配置
+- 🪟 **Windows完全适配**: 智能COM端口检测，TCP守护进程，零配置运行
 - 🔗 **Modbus RTU协议**: 完整实现Modbus RTU通信协议
 - ⚡ **继电器控制**: 支持单个和批量继电器控制
 - 📊 **数字量输入**: 实时读取数字量输入状态
@@ -13,6 +14,7 @@
 - ⚙️ **配置管理**: 灵活的配置文件和配置档案管理
 - 🎨 **美化输出**: 彩色终端输出和进度指示
 - 🚀 **智能守护进程**: 跨平台守护进程模式，支持多终端协作
+- ⚡ **高响应性**: 优化的检查周期，提供快速的状态更新
 
 ## 安装说明
 
@@ -22,7 +24,32 @@
 - USB转串口驱动程序
 - 支持的操作系统：Ubuntu 18.04+、Windows 10+、macOS 10.15+
 
-### 从源码安装
+### Windows安装（完全适配）
+
+Windows用户可以享受零配置的完整功能体验：
+
+1. **安装Python依赖**：
+```cmd
+pip install -r requirements.txt
+```
+
+2. **直接使用**（无需管理员权限）：
+```cmd
+# 自动检测COM端口
+python run.py device auto-detect
+
+# 开始使用（示例COM11）
+python run.py relay toggle --port COM11 --relay 1
+python run.py input monitor --port COM11
+```
+
+#### Windows特有优化
+- ✅ **智能COM端口检测**: 自动扫描可用的COM端口（COM1-COM256）
+- ✅ **TCP守护进程**: 使用TCP套接字代替Unix套接字，确保跨进程通信
+- ✅ **零权限要求**: 无需管理员权限，直接运行
+- ✅ **驱动程序兼容**: 支持所有Windows串口驱动（CH340/CH341/CP2102/FTDI等）
+
+### Linux/macOS安装
 
 1. 克隆项目仓库：
 ```bash
@@ -35,9 +62,10 @@ cd usb-relay-rtu
 pip install -r requirements.txt
 ```
 
-3. 安装软件包：
+3. 权限设置（仅Linux需要）：
 ```bash
-pip install -e .
+sudo usermod -a -G dialout $USER
+# 重新登录后生效
 ```
 
 ### 使用pip安装
@@ -289,6 +317,16 @@ usb-relay --verbose relay status --port /dev/ttyUSB0
 
 ## 更新日志
 
+### v1.2.0 (2025-09-15)
+
+#### 🪟 Windows完全适配 + 性能优化
+- ✅ **Windows原生支持**: TCP守护进程、智能COM端口检测，零配置运行
+- ✅ **跨平台IPC**: Windows使用TCP套接字，Linux/macOS使用Unix套接字
+- ✅ **高响应性**: 守护进程检查周期从2秒优化到0.5秒，提升4倍响应速度
+- ✅ **错误恢复优化**: 错误恢复时间从5秒缩短到2秒，提升60%恢复效率
+- ✅ **驱动程序兼容**: 全面支持CH340/CH341/CP2102/FTDI等主流串口芯片
+- ✅ **无权限运行**: Windows环境下无需管理员权限，直接使用
+
 ### v1.1.0 (2024-09-15)
 
 #### 🚀 重大更新：守护进程通信同步优化
@@ -309,6 +347,6 @@ usb-relay --verbose relay status --port /dev/ttyUSB0
 
 ---
 
-**作者**: USB Relay RTU Team  
-**邮箱**: your-email@example.com  
-**项目地址**: https://github.com/your-username/usb-relay-rtu
+**作者**: Fanming
+**邮箱**: kongming2liya@outlook.com
+**项目地址**: https://github.com/fmkong/usb_relay_rtu

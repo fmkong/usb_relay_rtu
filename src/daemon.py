@@ -179,13 +179,13 @@ class USBRelayDaemon:
                     finally:
                         self.serial_lock.release()
                 
-                # 状态更新间隔2秒，避免频繁访问
-                time.sleep(2.0)
+                # 状态更新间隔0.5秒，提高响应速度
+                time.sleep(0.5)
                 
             except Exception as e:
                 if self.running:
                     print(f"\n后台状态更新错误: {e}")
-                time.sleep(5.0)  # 出错后等待更长时间
+                time.sleep(2.0)  # 出错后等待更长时间
     
     def _handle_client_safe(self, client_socket):
         """安全处理客户端连接"""
