@@ -213,7 +213,7 @@ class USBRelayDaemon:
                     return relay_list, input_list
                 
                 # 安全执行状态读取
-                relay_states, input_states = self._execute_command(read_states, timeout=1.0)
+                relay_states, input_states = self._execute_command(read_states, timeout=3.0)
                 
                 # 更新缓存
                 with self.state_lock:

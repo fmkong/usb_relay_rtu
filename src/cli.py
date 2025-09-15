@@ -21,9 +21,11 @@ from rich.prompt import Confirm
 try:
     from .device_controller import USBRelayController, DeviceManager, RelaySequence
     from .modbus_rtu import ModbusRTUException
+    from .daemon import DaemonClient, start_daemon_if_needed
 except ImportError:
     from device_controller import USBRelayController, DeviceManager, RelaySequence
     from modbus_rtu import ModbusRTUException
+    from daemon import DaemonClient, start_daemon_if_needed
 
 
 console = Console()
@@ -405,99 +407,89 @@ def input_status(port: str, slave_id: int, input: Optional[int], count: int):
 @input.command("monitor")
 @click.option("--port", "-p", required=True, help="设备端口路径")
 @click.option("--slave-id", "-s", default=1, help="从设备地址")
-@click.option("--input", "-i", type=int, help="输入编号（1-8），不指定则监控所有")
-@click.option("--count", "-c", default=8, help="最大输入数量")
-@click.option("--interval", default=1.0, type=float, help="监控间隔（秒）")
+@click.option("--input", "-i", type=int, help="输入编号（1-4），不指定则监控所有")
+@click.option("--count", "-c", default=4, help="输入数量（默认4路）")
+@click.option("--interval", default=0.5, type=float, help="监控间隔（秒）")
+@click.option("--interactive", "-I", is_flag=True, help="交互式模式，可通过键盘控制继电器")
 @handle_exceptions
-def input_monitor(port: str, slave_id: int, input: Optional[int], count: int, interval: float):
+def input_monitor(port: str, slave_id: int, input: Optional[int], count: int, interval: float, interactive: bool):
     """实时监控数字量输入状态"""
-    console.print("[cyan]开始监控数字量输入状态，按 Ctrl+C 停止...[/cyan]")
+    console.print("[cyan]启动守护进程监控模式...[/cyan]")
+    console.print(f"[yellow]设备: {port} | 从地址: {slave_id} | 路数: {count}[/yellow]")
+    console.print()
     
-    with USBRelayController(port, slave_id) as controller:
-        try:
-            while True:
-                console.clear()
+    # 启动完整的守护进程（包含通信同步机制）
+    from daemon import USBRelayDaemon, DaemonClient
+    import signal
+    import threading
+    
+    daemon = USBRelayDaemon(port, slave_id, count)
+    
+    def signal_handler(sig, frame):
+        daemon.stop()
+        console.print()
+        console.print("[green]✓ 监控守护进程已停止[/green]")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    try:
+        # 在后台线程启动完整的守护进程
+        daemon_thread = threading.Thread(target=daemon.start, daemon=True)
+        daemon_thread.start()
+        
+        # 等待守护进程启动
+        time.sleep(2)
+        
+        # 创建客户端来获取状态
+        client = DaemonClient(port)
+        
+        console.print("[green]✓ 守护进程已启动，现在可以在其他终端使用控制命令[/green]")
+        console.print("[cyan]在新终端中使用以下命令控制继电器:[/cyan]")
+        console.print(f"[dim]  sg dialout -c \"python run.py relay toggle -p {port} -r 1\"[/dim]")
+        console.print(f"[dim]  sg dialout -c \"python run.py relay on -p {port} -r 2\"[/dim]")
+        console.print(f"[dim]  sg dialout -c \"python run.py relay status -p {port}\"[/dim]")
+        console.print()
+        
+        # 主监控循环
+        while daemon.running:
+            current_time = time.strftime("%H:%M:%S")
+            
+            try:
+                # 通过客户端获取状态
+                status = client.get_status()
                 
-                if input is not None:
-                    # 监控单个输入
-                    state = controller.get_input_state(input)
-                    status_color = "green" if state.state else "red"
-                    status_text = "高电平" if state.state else "低电平"
+                if status.get("success"):
+                    relay_states = status.get("relay_states", [False] * count)
+                    input_states = status.get("input_states", [False] * count)
                     
-                    current_time = time.strftime("%H:%M:%S")
-                    console.print(f"[{current_time}] 输入 {input}: [{status_color}]{status_text}[/{status_color}]")
+                    # 构建状态显示
+                    relay_status = []
+                    for i in range(count):
+                        state = "●" if (i < len(relay_states) and relay_states[i]) else "○"
+                        relay_status.append(f"R{i+1}{state}")
+                    
+                    input_status = []
+                    for i in range(count):
+                        state = "●" if (i < len(input_states) and input_states[i]) else "○"
+                        input_status.append(f"I{i+1}{state}")
+                    
+                    # 简洁的状态显示
+                    print(f"\r[{current_time}] 继电器: {' '.join(relay_status)} | 输入: {' '.join(input_status)}", end="", flush=True)
                 else:
-                    # 监控所有输入
-                    states = controller.get_all_input_states(count)
+                    print(f"\r[{current_time}] 状态获取失败: {status.get('error', '未知错误')}", end="", flush=True)
                     
-                    table = Table(title=f"数字量输入状态 - {time.strftime('%Y-%m-%d %H:%M:%S')}")
-                    table.add_column("输入", justify="center", style="cyan")
-                    table.add_column("状态", justify="center")
-                    table.add_column("值", justify="center", style="yellow")
-                    
-                    for state in states:
-                        status_color = "green" if state.state else "red"
-                        status_text = "高电平" if state.state else "低电平"
-                        value_text = "1" if state.state else "0"
-                        table.add_row(
-                            str(state.input_id),
-                            f"[{status_color}]{status_text}[/{status_color}]",
-                            value_text
-                        )
-                    
-                    console.print(table)
-                
-                time.sleep(interval)
-                
-        except KeyboardInterrupt:
-            console.print("\n[yellow]监控已停止[/yellow]")
-
-
-@cli.command("test")
-@click.option("--port", "-p", required=True, help="设备端口路径")
-@click.option("--slave-id", "-s", default=1, help="从设备地址")
-@handle_exceptions
-def test_device(port: str, slave_id: int):
-    """测试设备功能"""
-    console.print("[cyan]开始设备功能测试...[/cyan]")
+            except Exception as e:
+                print(f"\r[{current_time}] 通信错误: {e}", end="", flush=True)
+            
+            time.sleep(interval)
     
-    with USBRelayController(port, slave_id) as controller:
-        # 测试连接
-        console.print("1. 测试设备连接...")
-        if controller.test_connection():
-            console.print("[green]   ✓ 设备连接正常[/green]")
-        else:
-            console.print("[red]   ✗ 设备连接失败[/red]")
-            return
-        
-        # 测试继电器控制
-        console.print("2. 测试继电器控制...")
-        try:
-            # 测试单个继电器
-            controller.turn_on_relay(1)
-            time.sleep(0.5)
-            state1 = controller.get_relay_state(1)
-            
-            controller.turn_off_relay(1)
-            time.sleep(0.5)
-            state2 = controller.get_relay_state(1)
-            
-            if state1.state and not state2.state:
-                console.print("[green]   ✓ 继电器控制正常[/green]")
-            else:
-                console.print("[red]   ✗ 继电器控制异常[/red]")
-        except Exception as e:
-            console.print(f"[red]   ✗ 继电器测试失败: {e}[/red]")
-        
-        # 测试数字量输入
-        console.print("3. 测试数字量输入...")
-        try:
-            inputs = controller.get_all_input_states(4)
-            console.print(f"[green]   ✓ 成功读取 {len(inputs)} 个输入状态[/green]")
-        except Exception as e:
-            console.print(f"[red]   ✗ 数字量输入测试失败: {e}[/red]")
-        
-        console.print("[green]设备功能测试完成[/green]")
+    except Exception as e:
+        # 先换行，再输出错误信息
+        print()  # 换行
+        console.print(f"[red]监控启动失败: {e}[/red]")
+        daemon.stop()
 
 
 @cli.command("daemon")
