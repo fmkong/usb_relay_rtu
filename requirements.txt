@@ -1,0 +1,19 @@
+# USB继电器RTU控制软件依赖包
+
+# 核心依赖
+pyserial>=3.5
+click>=8.0.0
+rich>=12.0.0
+PyYAML>=6.0
+
+# 可选依赖（用于开发和测试）
+pytest>=7.0.0
+pytest-cov>=4.0.0
+black>=22.0.0
+flake8>=5.0.0
+mypy>=0.991
+
+# 打包依赖
+setuptools>=65.0.0
+wheel>=0.37.0
+build>=0.8.0
