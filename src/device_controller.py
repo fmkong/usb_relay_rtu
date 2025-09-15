@@ -407,7 +407,7 @@ class DeviceManager:
     @staticmethod
     def get_platform_specific_ports() -> List[str]:
         """
-        获取平台特定的常见串口设备路径
+        获取平台特定的常见串口设备路径 - 性能优化版本
         
         Returns:
             List[str]: 串口设备路径列表
@@ -421,11 +421,19 @@ class DeviceManager:
                 "/dev/ttyACM*",
                 "/dev/ttyS*"
             ]
+            ports = []
+            for pattern in patterns:
+                ports.extend(glob.glob(pattern))
+            return sorted(ports)
+            
         elif system == "windows":
-            # Windows串口设备
-            patterns = [
-                "COM*"
-            ]
+            # Windows性能优化：使用pyserial扫描实际存在的COM端口
+            # 避免生成COM1-255的耗时循环
+            ports = []
+            for port_info in serial.tools.list_ports.comports():
+                ports.append(port_info.device)
+            return sorted(ports)
+            
         elif system == "darwin":  # macOS
             # macOS串口设备
             patterns = [
@@ -433,19 +441,12 @@ class DeviceManager:
                 "/dev/cu.usb*",
                 "/dev/tty.wchusbserial*"
             ]
+            ports = []
+            for pattern in patterns:
+                ports.extend(glob.glob(pattern))
+            return sorted(ports)
         else:
             return []
-        
-        ports = []
-        for pattern in patterns:
-            if system == "windows":
-                # Windows需要特殊处理
-                for i in range(1, 256):
-                    ports.append(f"COM{i}")
-            else:
-                ports.extend(glob.glob(pattern))
-        
-        return sorted(ports)
 
 
 class RelaySequence:

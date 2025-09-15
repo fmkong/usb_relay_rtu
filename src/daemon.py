@@ -12,6 +12,7 @@ import json
 import socket
 import threading
 import time
+import platform
 from typing import Dict, Any, Optional
 from pathlib import Path
 import tempfile
@@ -28,7 +29,7 @@ except ImportError:
 
 
 class USBRelayDaemon:
-    """USB继电器守护进程 - 健壮版本"""
+    """USB继电器守护进程 - 跨平台兼容版本"""
     
     def __init__(self, port: str, slave_id: int = 1, count: int = 4):
         self.port = port
@@ -37,8 +38,19 @@ class USBRelayDaemon:
         self.controller: Optional[USBRelayController] = None
         self.running = False
         
-        # IPC socket路径
-        self.socket_path = str(Path(tempfile.gettempdir()) / f"usb_relay_daemon_{port.replace('/', '_')}.sock")
+        # 跨平台IPC通信方式
+        self.is_windows = platform.system().lower() == "windows"
+        
+        if self.is_windows:
+            # Windows: 使用TCP套接字
+            self.tcp_port = self._find_free_port()
+            self.socket_path = f"127.0.0.1:{self.tcp_port}"
+            self.lock_file_path = Path(tempfile.gettempdir()) / f"usb_relay_daemon_{port.replace('/', '_').replace(':', '_')}.lock"
+        else:
+            # Linux/macOS: 使用Unix套接字
+            self.socket_path = str(Path(tempfile.gettempdir()) / f"usb_relay_daemon_{port.replace('/', '_')}.sock")
+            self.lock_file_path = None
+            
         self.server_socket = None
         
         # 串口访问锁
@@ -49,28 +61,58 @@ class USBRelayDaemon:
         self.last_input_states = [False] * count
         self.last_status_time = 0
         self.status_cache_lock = threading.Lock()
+    
+    def _find_free_port(self) -> int:
+        """查找空闲的TCP端口（Windows专用）"""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('', 0))
+            s.listen(1)
+            port = s.getsockname()[1]
+        return port
+    
+    def _create_lock_file(self):
+        """创建锁文件记录端口信息（Windows专用）"""
+        if self.is_windows and self.lock_file_path:
+            with open(self.lock_file_path, 'w') as f:
+                f.write(str(self.tcp_port))
+    
+    def _remove_lock_file(self):
+        """删除锁文件（Windows专用）"""
+        if self.lock_file_path and self.lock_file_path.exists():
+            os.unlink(self.lock_file_path)
         
     def start(self):
-        """启动守护进程"""
+        """启动守护进程 - 跨平台版本"""
         try:
             # 连接设备
             self.controller = USBRelayController(self.port, self.slave_id)
             self.controller.connect()
             
-            # 创建Unix socket
-            if os.path.exists(self.socket_path):
-                os.unlink(self.socket_path)
+            # 跨平台创建套接字
+            if self.is_windows:
+                # Windows: TCP套接字
+                self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                self.server_socket.bind(('127.0.0.1', self.tcp_port))
+                self._create_lock_file()
+            else:
+                # Linux/macOS: Unix套接字
+                if os.path.exists(self.socket_path):
+                    os.unlink(self.socket_path)
+                self.server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                self.server_socket.bind(self.socket_path)
             
-            self.server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self.server_socket.bind(self.socket_path)
             self.server_socket.listen(5)
-            
             self.running = True
             
             print(f"USB继电器守护进程已启动")
             print(f"设备: {self.port}")
-            print(f"Socket: {self.socket_path}")
-            print("✓ 健壮守护进程模式 - 智能串口管理")
+            print(f"平台: {platform.system()}")
+            if self.is_windows:
+                print(f"TCP端口: {self.tcp_port}")
+            else:
+                print(f"Socket: {self.socket_path}")
+            print("✓ 跨平台守护进程模式 - 智能串口管理")
             print("按 Ctrl+C 停止")
             
             # 启动后台状态更新线程（低频，避免冲突）
@@ -96,7 +138,7 @@ class USBRelayDaemon:
             self.stop()
             
     def stop(self):
-        """停止守护进程"""
+        """停止守护进程 - 跨平台版本"""
         self.running = False
         
         if self.controller:
@@ -105,8 +147,12 @@ class USBRelayDaemon:
         if self.server_socket:
             self.server_socket.close()
             
-        if os.path.exists(self.socket_path):
-            os.unlink(self.socket_path)
+        # 跨平台清理
+        if self.is_windows:
+            self._remove_lock_file()
+        else:
+            if os.path.exists(self.socket_path):
+                os.unlink(self.socket_path)
             
         print("守护进程已停止")
     
@@ -234,27 +280,65 @@ class USBRelayDaemon:
 
 
 class DaemonClient:
-    """守护进程客户端 - 智能版本"""
+    """守护进程客户端 - 跨平台版本，性能优化"""
     
     def __init__(self, port: str):
         self.port = port
-        self.socket_path = str(Path(tempfile.gettempdir()) / f"usb_relay_daemon_{port.replace('/', '_')}.sock")
+        self.is_windows = platform.system().lower() == "windows"
+        
+        if self.is_windows:
+            # Windows: 使用锁文件检测和TCP通信
+            self.lock_file_path = Path(tempfile.gettempdir()) / f"usb_relay_daemon_{port.replace('/', '_').replace(':', '_')}.lock"
+            self._cached_tcp_port = None  # 缓存TCP端口，避免重复读取
+        else:
+            # Linux/macOS: 使用Unix套接字
+            self.socket_path = str(Path(tempfile.gettempdir()) / f"usb_relay_daemon_{port.replace('/', '_')}.sock")
     
     def is_daemon_running(self) -> bool:
-        """检查守护进程是否运行"""
-        return os.path.exists(self.socket_path)
+        """检查守护进程是否运行 - 跨平台版本"""
+        if self.is_windows:
+            return self.lock_file_path.exists()
+        else:
+            return os.path.exists(self.socket_path)
+    
+    def _get_tcp_port(self) -> int:
+        """获取TCP端口号（Windows专用，带缓存优化）"""
+        # 性能优化：使用缓存避免重复读取锁文件
+        if self._cached_tcp_port is not None:
+            return self._cached_tcp_port
+            
+        if not self.lock_file_path.exists():
+            raise Exception("守护进程未运行")
+            
+        try:
+            with open(self.lock_file_path, 'r') as f:
+                self._cached_tcp_port = int(f.read().strip())
+                return self._cached_tcp_port
+        except Exception:
+            # 缓存失效，清除缓存
+            self._cached_tcp_port = None
+            raise
     
     def send_command(self, command: str, **kwargs) -> Dict[str, Any]:
-        """发送命令到守护进程，带重试机制"""
+        """发送命令到守护进程，带重试机制 - 跨平台版本，性能优化"""
         if not self.is_daemon_running():
             raise Exception("守护进程未运行")
         
-        max_retries = 2
+        max_retries = 1 if self.is_windows else 2  # Windows减少重试次数
         for attempt in range(max_retries + 1):
             try:
-                client_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                client_socket.settimeout(5.0)
-                client_socket.connect(self.socket_path)
+                if self.is_windows:
+                    # Windows性能优化：复用TCP连接配置
+                    tcp_port = self._get_tcp_port()
+                    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    client_socket.settimeout(2.0)  # 缩短超时时间
+                    client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  # 禁用Nagle算法
+                    client_socket.connect(('127.0.0.1', tcp_port))
+                else:
+                    # Linux/macOS: Unix套接字
+                    client_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    client_socket.settimeout(5.0)
+                    client_socket.connect(self.socket_path)
                 
                 request = {"command": command, **kwargs}
                 client_socket.send(json.dumps(request).encode())
@@ -267,9 +351,13 @@ class DaemonClient:
                 
             except Exception as e:
                 if attempt < max_retries:
-                    time.sleep(0.1)
+                    # Windows优化：更短的重试间隔
+                    time.sleep(0.05 if self.is_windows else 0.1)
                     continue
                 else:
+                    # 清除缓存，以防端口变化
+                    if self.is_windows:
+                        self._cached_tcp_port = None
                     raise Exception(f"与守护进程通信失败: {e}")
     
     def get_status(self) -> Dict[str, Any]:
