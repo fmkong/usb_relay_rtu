@@ -273,12 +273,35 @@ def relay_off(port: str, slave_id: int, relay: int):
 @handle_exceptions
 def relay_toggle(port: str, slave_id: int, relay: int):
     """切换继电器状态"""
-    from daemon import execute_relay_command_smart
+    from daemon import DaemonClient, get_status_smart, execute_relay_command_smart
     
+    # 先获取当前状态
+    try:
+        status_result = get_status_smart(port, slave_id, 8)
+        if status_result.get("success"):
+            relay_states = status_result.get("relay_states", [])
+            if relay <= len(relay_states):
+                current_state = relay_states[relay - 1]  # relay从1开始，数组从0开始
+                current_text = "开启" if current_state else "关闭"
+                target_text = "关闭" if current_state else "开启"
+            else:
+                current_text = "未知"
+                target_text = "切换"
+        else:
+            current_text = "未知"
+            target_text = "切换"
+    except Exception:
+        current_text = "未知"
+        target_text = "切换"
+    
+    # 执行toggle操作
     success = execute_relay_command_smart(port, slave_id, relay, "toggle")
     
     if success:
-        console.print(f"[green]✓ 继电器 {relay} 状态已切换[/green]")
+        if current_text != "未知":
+            console.print(f"[green]✓ 继电器 {relay} 已从 {current_text} 切换为 {target_text}[/green]")
+        else:
+            console.print(f"[green]✓ 继电器 {relay} 状态已切换[/green]")
     else:
         console.print(f"[red]✗ 继电器 {relay} 切换失败[/red]")
 
