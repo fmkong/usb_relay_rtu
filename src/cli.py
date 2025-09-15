@@ -447,9 +447,9 @@ def input_monitor(port: str, slave_id: int, input: Optional[int], count: int, in
         
         console.print("[green]✓ 守护进程已启动，现在可以在其他终端使用控制命令[/green]")
         console.print("[cyan]在新终端中使用以下命令控制继电器:[/cyan]")
-        console.print(f"[dim]  sg dialout -c \"python run.py relay toggle -p {port} -r 1\"[/dim]")
-        console.print(f"[dim]  sg dialout -c \"python run.py relay on -p {port} -r 2\"[/dim]")
-        console.print(f"[dim]  sg dialout -c \"python run.py relay status -p {port}\"[/dim]")
+        console.print(f"[dim]  python run.py relay toggle -p {port} -r 1[/dim]")
+        console.print(f"[dim]  python run.py relay on -p {port} -r 2[/dim]")
+        console.print(f"[dim]  python run.py relay status -p {port}[/dim]")
         console.print()
         
         # 主监控循环
