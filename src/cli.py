@@ -500,5 +500,104 @@ def test_device(port: str, slave_id: int):
         console.print("[green]设备功能测试完成[/green]")
 
 
+@cli.command("daemon")
+@click.option("--port", "-p", required=True, help="设备端口路径")
+@click.option("--slave-id", "-s", default=1, help="从设备地址")
+@click.option("--count", "-c", default=4, help="继电器/输入数量")
+@handle_exceptions
+def start_daemon(port: str, slave_id: int, count: int):
+    """启动守护进程模式"""
+    from daemon import USBRelayDaemon
+    import signal
+    
+    daemon = USBRelayDaemon(port, slave_id, count)
+    
+    def signal_handler(sig, frame):
+        daemon.stop()
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    daemon.start()
+
+
+@cli.command("test")
+@click.option("--port", "-p", required=True, help="设备端口路径")
+@click.option("--slave-id", "-s", default=1, help="从设备地址")
+@handle_exceptions
+def test_device(port: str, slave_id: int):
+    """测试设备功能"""
+    console.print("[cyan]开始设备功能测试...[/cyan]")
+    
+    # 检查是否有守护进程运行
+    daemon_client = DaemonClient(port)
+    if daemon_client.is_daemon_running():
+        console.print("[yellow]检测到守护进程正在运行，将通过守护进程进行测试[/yellow]")
+        
+        # 通过守护进程测试
+        try:
+            # 测试状态获取
+            status = daemon_client.get_status()
+            if status.get("success"):
+                console.print("[green]   ✓ 守护进程通信正常[/green]")
+            
+            # 测试继电器控制
+            console.print("测试继电器控制...")
+            success1 = daemon_client.set_relay(1, True)
+            time.sleep(0.5)
+            success2 = daemon_client.set_relay(1, False)
+            
+            if success1 and success2:
+                console.print("[green]   ✓ 继电器控制正常[/green]")
+            else:
+                console.print("[red]   ✗ 继电器控制异常[/red]")
+                
+            console.print("[green]守护进程模式测试完成[/green]")
+            
+        except Exception as e:
+            console.print(f"[red]守护进程测试失败: {e}[/red]")
+    
+    else:
+        # 直接模式测试
+        with USBRelayController(port, slave_id) as controller:
+            # 测试连接
+            console.print("1. 测试设备连接...")
+            if controller.test_connection():
+                console.print("[green]   ✓ 设备连接正常[/green]")
+            else:
+                console.print("[red]   ✗ 设备连接失败[/red]")
+                return
+            
+            # 测试继电器控制
+            console.print("2. 测试继电器控制...")
+            try:
+                # 测试单个继电器
+                controller.turn_on_relay(1)
+                time.sleep(0.5)
+                state1 = controller.get_relay_state(1)
+                
+                controller.turn_off_relay(1)
+                time.sleep(0.5)
+                state2 = controller.get_relay_state(1)
+                
+                if state1.state and not state2.state:
+                    console.print("[green]   ✓ 继电器控制正常[/green]")
+                else:
+                    console.print("[red]   ✗ 继电器控制异常[/red]")
+            except Exception as e:
+                console.print(f"[red]   ✗ 继电器测试失败: {e}[/red]")
+            
+            # 测试数字量输入
+            console.print("3. 测试数字量输入...")
+            try:
+                inputs = controller.get_all_input_states(4)
+                console.print(f"[green]   ✓ 成功读取 {len(inputs)} 个输入状态[/green]")
+            except Exception as e:
+                console.print(f"[red]   ✗ 数字量输入测试失败: {e}[/red]")
+            
+            console.print("[green]设备功能测试完成[/green]")
+
+
 if __name__ == "__main__":
     cli()
