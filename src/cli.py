@@ -513,6 +513,10 @@ def input_monitor(port: str, slave_id: int, input: Optional[int], count: int, in
         console.print()
         
         # 主监控循环
+        prev_relay_states = None
+        prev_input_states = None
+        last_print_was_newline = False  # 追踪上次是否换行打印
+        
         while daemon.running:
             current_time = time.strftime("%H:%M:%S")
             
@@ -523,6 +527,12 @@ def input_monitor(port: str, slave_id: int, input: Optional[int], count: int, in
                 if status.get("success"):
                     relay_states = status.get("relay_states", [False] * count)
                     input_states = status.get("input_states", [False] * count)
+                    
+                    # 检查状态是否发生变化
+                    states_changed = (
+                        prev_relay_states is not None and 
+                        (prev_relay_states != relay_states or prev_input_states != input_states)
+                    )
                     
                     # 构建状态显示
                     relay_status = []
@@ -535,13 +545,33 @@ def input_monitor(port: str, slave_id: int, input: Optional[int], count: int, in
                         state = "●" if (i < len(input_states) and input_states[i]) else "○"
                         input_status.append(f"I{i+1}{state}")
                     
-                    # 简洁的状态显示
-                    print(f"\r[{current_time}] 继电器: {' '.join(relay_status)} | 输入: {' '.join(input_status)}", end="", flush=True)
+                    status_line = f"[{current_time}] 继电器: {' '.join(relay_status)} | 输入: {' '.join(input_status)}"
+                    
+                    if states_changed:
+                        # 状态发生变化
+                        if not last_print_was_newline:
+                            # 如果上次是覆盖打印，先换行保留上一行
+                            print()
+                        print(status_line, end="", flush=True)
+                        last_print_was_newline = True
+                    else:
+                        # 状态无变化，覆盖当前行
+                        print(f"\r{status_line}", end="", flush=True)
+                        last_print_was_newline = False
+                    
+                    # 更新前一次的状态
+                    prev_relay_states = relay_states[:]
+                    prev_input_states = input_states[:]
+                    
                 else:
-                    print(f"\r[{current_time}] 状态获取失败: {status.get('error', '未知错误')}", end="", flush=True)
+                    error_msg = f"[{current_time}] 状态获取失败: {status.get('error', '未知错误')}"
+                    print(f"\r{error_msg}", end="", flush=True)
+                    last_print_was_newline = False
                     
             except Exception as e:
-                print(f"\r[{current_time}] 通信错误: {e}", end="", flush=True)
+                error_msg = f"[{current_time}] 通信错误: {e}"
+                print(f"\r{error_msg}", end="", flush=True)
+                last_print_was_newline = False
             
             time.sleep(interval)
     
