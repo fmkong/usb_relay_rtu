@@ -53,7 +53,7 @@ python run.py input monitor --port COM11
 
 1. 克隆项目仓库：
 ```bash
-git clone https://github.com/your-username/usb-relay-rtu.git
+git clone https://github.com/fmkong/usb-relay-rtu.git
 cd usb-relay-rtu
 ```
 
@@ -231,7 +231,7 @@ usb_relay_rtu/
 
 1. 克隆仓库并创建虚拟环境：
 ```bash
-git clone https://github.com/your-username/usb-relay-rtu.git
+git clone https://github.com/fmkong/usb-relay-rtu.git
 cd usb-relay-rtu
 python -m venv venv
 source venv/bin/activate  # Linux/macOS
@@ -312,10 +312,31 @@ usb-relay --verbose relay status --port /dev/ttyUSB0
 ## 支持
 
 - 📖 [文档](docs/)
-- 🐛 [问题反馈](https://github.com/your-username/usb-relay-rtu/issues)
-- 💬 [讨论区](https://github.com/your-username/usb-relay-rtu/discussions)
+- 🐛 [问题反馈](https://github.com/fmkong/usb-relay-rtu/issues)
+- 💬 [讨论区](https://github.com/fmkong/usb-relay-rtu/discussions)
 
 ## 更新日志
+
+### v1.3.0 (2025-09-22)
+
+#### 🚀 批量控制 + 智能监控优化
+- ✅ **多继电器批量控制**: 支持多个`-r`参数同时控制多个继电器
+- ✅ **详细状态反馈**: 每个继电器操作显示成功/失败状态和总结统计
+- ✅ **智能监控显示**: 状态变化时保留历史记录，稳定时覆盖显示
+- ✅ **状态跟踪优化**: 防止冗余换行，保持监控界面简洁清晰
+- ✅ **批量操作支持**: `relay on/off/toggle`命令全面支持批量操作
+
+#### 使用示例
+```bash
+# 同时打开多个继电器
+python usb_relay.py relay on -p /dev/ttyUSB0 -r 1 -r 2 -r 3
+
+# 同时切换多个继电器状态
+python usb_relay.py relay toggle -p /dev/ttyUSB0 -r 1 -r 2
+
+# 智能监控显示（状态变化保留记录，稳定时覆盖显示）
+python usb_relay.py input monitor -p /dev/ttyUSB0
+```
 
 ### v1.2.0 (2025-09-15)
 
