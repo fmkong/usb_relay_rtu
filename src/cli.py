@@ -235,75 +235,112 @@ def relay_status(port: str, slave_id: int, relay: Optional[int], count: int):
 @relay.command("on")
 @click.option("--port", "-p", required=True, help="设备端口路径")
 @click.option("--slave-id", "-s", default=1, help="从设备地址")
-@click.option("--relay", "-r", required=True, type=int, help="继电器编号（1-8）")
+@click.option("--relay", "-r", required=True, type=int, multiple=True, help="继电器编号（1-8），可以指定多个")
 @handle_exceptions
-def relay_on(port: str, slave_id: int, relay: int):
+def relay_on(port: str, slave_id: int, relay: List[int]):
     """打开继电器"""
     from daemon import execute_relay_command_smart
     
-    success = execute_relay_command_smart(port, slave_id, relay, "on")
+    success_count = 0
+    failed_relays = []
     
-    if success:
-        console.print(f"[green]✓ 继电器 {relay} 已打开[/green]")
-    else:
-        console.print(f"[red]✗ 继电器 {relay} 打开失败[/red]")
+    for relay_id in relay:
+        success = execute_relay_command_smart(port, slave_id, relay_id, "on")
+        if success:
+            success_count += 1
+            console.print(f"[green]✓ 继电器 {relay_id} 已打开[/green]")
+        else:
+            failed_relays.append(relay_id)
+            console.print(f"[red]✗ 继电器 {relay_id} 打开失败[/red]")
+    
+    # 显示总结信息
+    if success_count > 0 and not failed_relays:
+        console.print(f"[green]✓ 成功打开 {success_count} 个继电器[/green]")
+    elif success_count > 0 and failed_relays:
+        console.print(f"[yellow]部分成功: {success_count} 个成功，{len(failed_relays)} 个失败[/yellow]")
+    elif not success_count:
+        console.print(f"[red]✗ 所有继电器操作失败[/red]")
 
 
 @relay.command("off")
 @click.option("--port", "-p", required=True, help="设备端口路径")
 @click.option("--slave-id", "-s", default=1, help="从设备地址")
-@click.option("--relay", "-r", required=True, type=int, help="继电器编号（1-8）")
+@click.option("--relay", "-r", required=True, type=int, multiple=True, help="继电器编号（1-8），可以指定多个")
 @handle_exceptions
-def relay_off(port: str, slave_id: int, relay: int):
+def relay_off(port: str, slave_id: int, relay: List[int]):
     """关闭继电器"""
     from daemon import execute_relay_command_smart
     
-    success = execute_relay_command_smart(port, slave_id, relay, "off")
+    success_count = 0
+    failed_relays = []
     
-    if success:
-        console.print(f"[green]✓ 继电器 {relay} 已关闭[/green]")
-    else:
-        console.print(f"[red]✗ 继电器 {relay} 关闭失败[/red]")
+    for relay_id in relay:
+        success = execute_relay_command_smart(port, slave_id, relay_id, "off")
+        if success:
+            success_count += 1
+            console.print(f"[green]✓ 继电器 {relay_id} 已关闭[/green]")
+        else:
+            failed_relays.append(relay_id)
+            console.print(f"[red]✗ 继电器 {relay_id} 关闭失败[/red]")
+    
+    # 显示总结信息
+    if success_count > 0 and not failed_relays:
+        console.print(f"[green]✓ 成功关闭 {success_count} 个继电器[/green]")
+    elif success_count > 0 and failed_relays:
+        console.print(f"[yellow]部分成功: {success_count} 个成功，{len(failed_relays)} 个失败[/yellow]")
+    elif not success_count:
+        console.print(f"[red]✗ 所有继电器操作失败[/red]")
 
 
 @relay.command("toggle")
 @click.option("--port", "-p", required=True, help="设备端口路径")
 @click.option("--slave-id", "-s", default=1, help="从设备地址")
-@click.option("--relay", "-r", required=True, type=int, help="继电器编号（1-8）")
+@click.option("--relay", "-r", required=True, type=int, multiple=True, help="继电器编号（1-8），可以指定多个")
 @handle_exceptions
-def relay_toggle(port: str, slave_id: int, relay: int):
+def relay_toggle(port: str, slave_id: int, relay: List[int]):
     """切换继电器状态"""
     from daemon import DaemonClient, get_status_smart, execute_relay_command_smart
     
     # 先获取当前状态
     try:
         status_result = get_status_smart(port, slave_id, 8)
-        if status_result.get("success"):
-            relay_states = status_result.get("relay_states", [])
-            if relay <= len(relay_states):
-                current_state = relay_states[relay - 1]  # relay从1开始，数组从0开始
-                current_text = "开启" if current_state else "关闭"
-                target_text = "关闭" if current_state else "开启"
-            else:
-                current_text = "未知"
-                target_text = "切换"
+        relay_states = status_result.get("relay_states", []) if status_result.get("success") else []
+    except Exception:
+        relay_states = []
+    
+    success_count = 0
+    failed_relays = []
+    
+    for relay_id in relay:
+        # 获取当前继电器状态
+        if relay_id <= len(relay_states):
+            current_state = relay_states[relay_id - 1]  # relay从1开始，数组从0开始
+            current_text = "开启" if current_state else "关闭"
+            target_text = "关闭" if current_state else "开启"
         else:
             current_text = "未知"
             target_text = "切换"
-    except Exception:
-        current_text = "未知"
-        target_text = "切换"
-    
-    # 执行toggle操作
-    success = execute_relay_command_smart(port, slave_id, relay, "toggle")
-    
-    if success:
-        if current_text != "未知":
-            console.print(f"[green]✓ 继电器 {relay} 已从 {current_text} 切换为 {target_text}[/green]")
+        
+        # 执行toggle操作
+        success = execute_relay_command_smart(port, slave_id, relay_id, "toggle")
+        
+        if success:
+            success_count += 1
+            if current_text != "未知":
+                console.print(f"[green]✓ 继电器 {relay_id} 已从 {current_text} 切换为 {target_text}[/green]")
+            else:
+                console.print(f"[green]✓ 继电器 {relay_id} 状态已切换[/green]")
         else:
-            console.print(f"[green]✓ 继电器 {relay} 状态已切换[/green]")
-    else:
-        console.print(f"[red]✗ 继电器 {relay} 切换失败[/red]")
+            failed_relays.append(relay_id)
+            console.print(f"[red]✗ 继电器 {relay_id} 切换失败[/red]")
+    
+    # 显示总结信息
+    if success_count > 0 and not failed_relays:
+        console.print(f"[green]✓ 成功切换 {success_count} 个继电器状态[/green]")
+    elif success_count > 0 and failed_relays:
+        console.print(f"[yellow]部分成功: {success_count} 个成功，{len(failed_relays)} 个失败[/yellow]")
+    elif not success_count:
+        console.print(f"[red]✗ 所有继电器操作失败[/red]")
 
 
 @relay.command("all-on")
